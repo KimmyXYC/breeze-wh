@@ -60,7 +60,7 @@ PIN entry is disabled until you save a PIN. The PIN is stored for the current us
 
 When enabled, supported prompts can authenticate without you typing your PIN. Breeze fills the PIN and invokes the enabled confirmation button at most once per dialog. A failed attempt is left for manual handling; close and reopen the dialog to try again after correcting the saved PIN.
 
-This supports the `PasswordField_4` control hosted by the system `CredentialUIBroker.exe`, using UI Automation's Value pattern. Controls that reject programmatic input are left for manual entry. It does not switch authentication methods, unlock the Windows sign-in screen, or handle UAC / Secure Desktop prompts.
+This supports a single `PasswordField_4` password control hosted by the system `CredentialUIBroker.exe`, using UI Automation's Value pattern. Its accessible label must exactly match the current Windows Hello PIN or work PIN label loaded from Windows' NGC credential provider. Physical security-key PINs, other passwords, PIN setup/change forms, and unrecognized fields are never filled or auto-confirmed. Missing or ambiguous provider labels disable automatic entry for that dialog. Controls that reject programmatic input are left for manual entry. It does not switch authentication methods, unlock the Windows sign-in screen, or handle UAC / Secure Desktop prompts.
 
 ## Upgrade
 
@@ -98,11 +98,12 @@ Breeze is a single binary that runs in two modes:
 - **Service mode** — Runs in Session 0 as a Windows Service. Detects user logon/logoff and spawns the helper in the user's desktop session. Automatically restarts it on crash with exponential backoff.
 
 - **Helper mode** — Runs in the user session with elevated privileges. Subscribes to UI Automation focus events to detect `Credential Dialog Xaml Host` windows. On detection, scans the UI tree in a single pass:
-  - `PasswordField_4` present → PIN mode → **fill and confirm once** if a PIN is saved; otherwise skip
+  - One verified Windows Hello PIN field present → **fill and confirm once** if a PIN is saved
+  - Any other password/PIN field present → **skip both filling and confirmation**
   - `OkButton` present without `PasswordField` → face recognition → **click**
   - Controls not ready → watch structure and enabled/visibility property changes until they are ready
 
-All detection uses language-independent `AutomationId` and `ClassName` properties, so it works regardless of your Windows display language.
+Detection uses `AutomationId` and `ClassName`, plus exact PIN field labels loaded from the installed Windows credential providers in the current UI language. It does not rely on translated window titles or button text.
 
 ## Configuration
 

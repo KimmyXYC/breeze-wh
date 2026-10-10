@@ -281,7 +281,7 @@ fn try_handle_dialog(shared: &Arc<SharedState>, dialog: &IUIAutomationElement) -
 
     let mut scan = dialog::scan_dialog(&shared.automation, dialog)?;
     let rid = get_runtime_id(dialog);
-    if scan.password_field.is_some() || shared.pin_stage(&rid).is_some() {
+    if scan.has_password_field || shared.pin_stage(&rid).is_some() {
         // Without an identity we cannot prevent repeated PIN attempts.
         if rid.is_empty() {
             shared.remove_active_handler();
@@ -289,7 +289,7 @@ fn try_handle_dialog(shared: &Arc<SharedState>, dialog: &IUIAutomationElement) -
         }
         loop {
             let field_ready = scan
-                .password_field
+                .hello_pin_field
                 .as_ref()
                 .map(dialog::is_ready)
                 .transpose()?;
@@ -301,10 +301,11 @@ fn try_handle_dialog(shared: &Arc<SharedState>, dialog: &IUIAutomationElement) -
                 .unwrap_or(false);
             match pin_action(shared.pin_stage(&rid), field_ready, button_ready) {
                 PinAction::Fill => {
-                    if !dialog::is_pin_host(dialog, scan.password_field.as_ref().unwrap())? {
-                        tracing::debug!(
-                            "PIN field is not hosted by the system credential broker; skipping"
-                        );
+                    if !dialog::is_windows_hello_pin(
+                        dialog,
+                        scan.hello_pin_field.as_ref().unwrap(),
+                    )? {
+                        tracing::debug!("Field is not a verified Windows Hello PIN; skipping");
                         shared.remove_active_handler();
                         return Ok(true);
                     }
@@ -314,7 +315,7 @@ fn try_handle_dialog(shared: &Arc<SharedState>, dialog: &IUIAutomationElement) -
                     };
                     // Mark the attempt before SetValue, including failed writes.
                     shared.record_pin_attempt(rid.clone(), dialog);
-                    if let Err(e) = dialog::fill_pin(scan.password_field.as_ref().unwrap(), &pin) {
+                    if let Err(e) = dialog::fill_pin(scan.hello_pin_field.as_ref().unwrap(), &pin) {
                         // A provider's error text may contain its input. Log only the code.
                         tracing::warn!(code = ?e.code(), "Could not fill PIN; use manual entry");
                         shared.remove_active_handler();
@@ -330,6 +331,12 @@ fn try_handle_dialog(shared: &Arc<SharedState>, dialog: &IUIAutomationElement) -
                     shared.set_pin_stage(&rid, PinStage::Attempted);
                     shared.record_click(rid);
                     shared.remove_active_handler();
+                    if !dialog::is_windows_hello_pin(
+                        dialog,
+                        scan.hello_pin_field.as_ref().unwrap(),
+                    )? {
+                        return Ok(true);
+                    }
                     dialog::invoke_button(scan.ok_button.as_ref().unwrap())?;
                     tracing::info!("PIN confirmation submitted");
                     return Ok(true);
@@ -523,5 +530,16 @@ mod tests {
     fn enabled_ok_button_never_submits_before_filling() {
         assert_eq!(pin_action(None, Some(true), true), PinAction::Fill);
         assert_eq!(pin_action(None, Some(false), true), PinAction::Wait);
+    }
+
+    #[test]
+    fn non_hello_password_fields_never_fill_or_submit() {
+        // A security-key/unknown field is present, but hello_pin_field is None.
+        assert_eq!(pin_action(None, None, true), PinAction::Done);
+        // The user can switch to a security key while waiting for OK to enable.
+        assert_eq!(
+            pin_action(Some(PinStage::Filled), None, true),
+            PinAction::Done
+        );
     }
 }

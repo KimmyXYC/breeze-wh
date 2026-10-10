@@ -60,7 +60,7 @@ PIN을 저장하기 전에는 자동 입력이 비활성화되어 있습니다. 
 
 활성화하면 지원되는 인증 창에서 직접 PIN을 입력하지 않아도 인증할 수 있습니다. 각 창에서 PIN 입력과 확인은 한 번만 시도하며, 실패하면 수동으로 처리할 수 있도록 둡니다. 저장된 PIN을 수정한 후 다시 시도하려면 인증 창을 닫고 다시 여세요.
 
-시스템 `CredentialUIBroker.exe`의 `PasswordField_4` 컨트롤과 UI Automation Value 패턴을 지원합니다. 프로그램 입력을 허용하지 않는 컨트롤은 수동 입력이 필요합니다. 인증 방식 전환, Windows 로그인 화면 잠금 해제, UAC / 보안 데스크톱 창은 지원하지 않습니다.
+시스템 `CredentialUIBroker.exe`의 단일 `PasswordField_4` 암호 컨트롤과 UI Automation Value 패턴을 지원합니다. 입력란 이름은 Windows NGC 자격 증명 공급자에서 읽은 현재 Windows Hello PIN 또는 업무용 PIN 이름과 정확히 일치해야 합니다. 물리적 보안 키 PIN, 다른 암호, PIN 설정/변경 화면, 알 수 없는 입력란은 자동 입력하거나 확인하지 않습니다. 공급자 이름을 읽을 수 없거나 구분할 수 없으면 자동 입력을 건너뜁니다. 프로그램 입력을 허용하지 않는 컨트롤은 수동 입력이 필요합니다. 인증 방식 전환, Windows 로그인 화면 잠금 해제, UAC / 보안 데스크톱 창은 지원하지 않습니다.
 
 ## 업그레이드
 
@@ -98,11 +98,12 @@ Breeze는 하나의 바이너리가 두 가지 모드로 동작합니다:
 - **Service 모드** — Session 0에서 Windows 서비스로 실행됩니다. 사용자 로그온/로그오프를 감지하고, 유저 세션에 helper 프로세스를 띄웁니다. helper가 죽으면 자동으로 다시 띄웁니다.
 
 - **Helper 모드** — 유저 세션에서 관리자 권한으로 실행됩니다. UI Automation 이벤트를 통해 `Credential Dialog Xaml Host` 창을 감지하고, UI 트리를 한 번에 스캔합니다:
-  - `PasswordField_4`이 있으면 → PIN 모드 → 저장된 PIN이 있으면 **한 번 입력 및 확인**, 없으면 무시
+  - 확인된 Windows Hello PIN 입력란 하나가 있으면 → 저장된 PIN으로 **한 번 입력 및 확인**
+  - 다른 암호/PIN 입력란이 있으면 → **입력과 확인 모두 건너뜀**
   - `PasswordField` 없이 `OkButton`이 있으면 → 얼굴 인식 → **클릭**
   - 컨트롤이 준비되지 않았으면 → 구조 및 활성화/표시 상태 변경 이벤트로 기다림
 
-감지에 사용하는 `AutomationId`와 `ClassName`은 언어에 의존하지 않으므로, Windows 표시 언어가 뭐든 상관없이 동작합니다.
+감지에는 `AutomationId`, `ClassName`과 현재 UI 언어로 Windows 자격 증명 공급자에서 읽은 PIN 입력란 이름을 사용합니다. 번역된 창 제목이나 버튼 텍스트에는 의존하지 않습니다.
 
 ## 설정
 

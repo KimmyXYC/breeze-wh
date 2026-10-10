@@ -68,7 +68,7 @@ Language-independent. Do NOT match on window title / button name strings.
 - Face-recognition mode: **no** `PasswordField_4` element present
 - Click target: AutomationId `OkButton` with `InvokePattern`
 
-If `PasswordField_4` is present → PIN mode → fill and confirm only when the user has saved a PIN with `breeze-wh pin set`. PIN entry must target a password control in the system `CredentialUIBroker.exe`. Store PINs only in the current user's Windows Credential Manager; never put them in shared config, command-line arguments, or logs. Consume each attempt before writing/invoking and never retry automatically within the same dialog. Watch enabled/visibility property changes as well as structure changes for delayed controls.
+If `PasswordField_4` is present → PIN mode → fill and confirm only when the user has saved a PIN with `breeze-wh pin set`. PIN entry must target a single password control in the system `CredentialUIBroker.exe`, with an exact current-PIN field label loaded from `NgcCredProv.dll` (resource IDs 105/106). Exclude `FidoCredProv.dll` PIN labels (205/208/209); missing or ambiguous labels must fail closed. Recheck the field before both filling and submitting. Any other password field blocks automatic confirmation too. Never classify `PasswordField_4` alone as Windows Hello; security-key providers reuse field IDs. Store PINs only in the current user's Windows Credential Manager; never put them in shared config, command-line arguments, or logs. Consume each attempt before writing/invoking and never retry automatically within the same dialog. Watch enabled/visibility property changes as well as structure changes for delayed controls.
 
 ## Release Flow (manual invocation)
 
@@ -84,7 +84,7 @@ If `PasswordField_4` is present → PIN mode → fill and confirm only when the 
 
 - Cannot auto-confirm UAC / Secure Desktop prompts (Windows design wall — UI Automation is blocked there)
 - `breeze-wh upgrade` diverges from cargo's registry metadata (user-visible note printed on completion)
-- Face recognition is auto-confirmed; PIN input is opt-in via `pin set|clear|status`. Fingerprint / security key / smart card remain untested.
+- Face recognition is auto-confirmed; Windows Hello PIN input is opt-in via `pin set|clear|status`. Physical security-key PINs and other password fields are excluded. Fingerprint / smart card remain untested.
 - Windows-only; `cargo build` fails on Linux/macOS (all deps are Win32)
 
 ## When Fixing Things

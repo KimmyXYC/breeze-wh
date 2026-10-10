@@ -1,4 +1,5 @@
-use crate::common::constants::{OK_BUTTON_AUTOMATION_ID, PASSWORD_FIELD_AUTOMATION_ID};
+use super::pin_field::{self, PasswordFieldKind};
+use crate::common::constants::OK_BUTTON_AUTOMATION_ID;
 use windows::Win32::Foundation::CloseHandle;
 use windows::Win32::System::SystemInformation::GetSystemDirectoryW;
 use windows::Win32::System::Threading::{
@@ -14,17 +15,19 @@ use zeroize::Zeroize;
 
 /// Result of scanning a credential dialog's UI tree in a single pass.
 pub struct DialogScanResult {
-    pub password_field: Option<IUIAutomationElement>,
+    pub has_password_field: bool,
+    pub hello_pin_field: Option<IUIAutomationElement>,
     pub ok_button: Option<IUIAutomationElement>,
 }
 
 /// Scan all descendants of `dialog` in one FindAll pass.
-/// Returns the PIN field and OkButton, regardless of their order in the tree.
+/// Only expose an unambiguous Windows Hello PIN field for automatic entry.
 pub fn scan_dialog(
     automation: &IUIAutomation,
     dialog: &IUIAutomationElement,
 ) -> Result<DialogScanResult> {
-    let mut password_field = None;
+    let mut hello_pin_field = None;
+    let mut password_fields = 0;
     let mut ok_button: Option<IUIAutomationElement> = None;
 
     unsafe {
@@ -34,10 +37,17 @@ pub fn scan_dialog(
 
         for i in 0..count {
             let el = all_elements.GetElement(i)?;
-            let auto_id = el.CurrentAutomationId().unwrap_or_default().to_string();
+            let auto_id = el.CurrentAutomationId()?.to_string();
+            let is_password = el.CurrentIsPassword()?.as_bool();
 
-            if auto_id == PASSWORD_FIELD_AUTOMATION_ID {
-                password_field = Some(el.clone());
+            if is_password || auto_id.starts_with("PasswordField_") {
+                password_fields += 1;
+                let label = el.CurrentName()?.to_string();
+                if pin_field::classify(&auto_id, is_password, &label)
+                    == PasswordFieldKind::WindowsHello
+                {
+                    hello_pin_field = Some(el.clone());
+                }
             }
 
             if auto_id == OK_BUTTON_AUTOMATION_ID {
@@ -49,8 +59,14 @@ pub fn scan_dialog(
         }
     }
 
+    // PIN changes, enrollment, and mixed credential forms require manual input.
+    if password_fields != 1 {
+        hello_pin_field = None;
+    }
+
     Ok(DialogScanResult {
-        password_field,
+        has_password_field: password_fields > 0,
+        hello_pin_field,
         ok_button,
     })
 }
@@ -60,10 +76,21 @@ pub fn is_ready(element: &IUIAutomationElement) -> Result<bool> {
 }
 
 /// A matching window class alone can be spoofed by an unrelated application.
-pub fn is_pin_host(dialog: &IUIAutomationElement, field: &IUIAutomationElement) -> Result<bool> {
+pub fn is_windows_hello_pin(
+    dialog: &IUIAutomationElement,
+    field: &IUIAutomationElement,
+) -> Result<bool> {
     unsafe {
         let pid = dialog.CurrentProcessId()?;
-        if !field.CurrentIsPassword()?.as_bool() || field.CurrentProcessId()? != pid {
+        // Recheck the live label before both filling and submitting: switching
+        // authentication methods can reuse the same dialog and field IDs.
+        if pin_field::classify(
+            &field.CurrentAutomationId()?.to_string(),
+            field.CurrentIsPassword()?.as_bool(),
+            &field.CurrentName()?.to_string(),
+        ) != PasswordFieldKind::WindowsHello
+            || field.CurrentProcessId()? != pid
+        {
             return Ok(false);
         }
         let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid as u32)?;
