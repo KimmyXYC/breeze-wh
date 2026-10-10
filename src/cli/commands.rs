@@ -35,6 +35,7 @@ pub fn run(args: &[String]) -> anyhow::Result<()> {
         Some("stop") => cmd_stop(),
         Some("status") => cmd_status(),
         Some("upgrade") => cmd_upgrade(),
+        Some("pin") => cmd_pin(&args[1..]),
         _ => {
             eprintln!("Breeze-WH - Auto Windows Hello");
             eprintln!();
@@ -47,6 +48,9 @@ pub fn run(args: &[String]) -> anyhow::Result<()> {
             eprintln!("  stop       Stop the Breeze-WH service");
             eprintln!("  status     Show the Breeze-WH service status");
             eprintln!("  upgrade    Upgrade to the latest release from GitHub");
+            eprintln!("  pin set    Save your PIN and enable automatic PIN entry");
+            eprintln!("  pin clear  Delete your saved PIN and disable automatic PIN entry");
+            eprintln!("  pin status Show whether automatic PIN entry is enabled");
             eprintln!();
             eprintln!("Internal (used by the service):");
             eprintln!("  service    Run as Windows Service");
@@ -54,6 +58,39 @@ pub fn run(args: &[String]) -> anyhow::Result<()> {
             std::process::exit(1);
         }
     }
+}
+
+fn cmd_pin(args: &[String]) -> anyhow::Result<()> {
+    use crate::common::pin;
+    use zeroize::Zeroizing;
+
+    if args.len() != 1 {
+        anyhow::bail!("Usage: breeze-wh pin <set|clear|status>");
+    }
+    match args[0].as_str() {
+        "set" => {
+            let value = Zeroizing::new(rpassword::prompt_password("Windows Hello PIN: ")?);
+            let confirmation = Zeroizing::new(rpassword::prompt_password("Confirm PIN: ")?);
+            if *value != *confirmation {
+                anyhow::bail!("PINs do not match; the saved PIN was not changed.");
+            }
+            pin::save(&value).context("Failed to save PIN in Windows Credential Manager")?;
+            println!("PIN saved for the current Windows user. Automatic PIN entry is enabled.");
+        }
+        "clear" => {
+            pin::clear().context("Failed to delete saved PIN")?;
+            println!("Saved PIN deleted. Automatic PIN entry is disabled.");
+        }
+        "status" => {
+            let enabled = pin::load().context("Failed to read saved PIN")?.is_some();
+            println!(
+                "Automatic PIN entry: {}",
+                if enabled { "enabled" } else { "disabled" }
+            );
+        }
+        _ => anyhow::bail!("Usage: breeze-wh pin <set|clear|status>"),
+    }
+    Ok(())
 }
 
 fn cmd_install() -> anyhow::Result<()> {

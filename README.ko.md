@@ -27,7 +27,7 @@ Windows Hello가 얼굴을 인식함
         ↓
 Breeze가 UI Automation API로 감지
         ↓
-얼굴 인식일 때만 자동으로 확인 (PIN은 건드리지 않음)
+자동으로 확인 (PIN 자동 입력은 아래에서 별도로 활성화)
         ↓
 클릭 없이 바로 통과
 ```
@@ -40,6 +40,27 @@ breeze-wh install
 ```
 
 끝입니다.
+
+## PIN 자동 입력
+
+Windows Hello를 사용할 Windows 사용자 계정으로 다음 명령을 실행하세요:
+
+```powershell
+breeze-wh pin set
+```
+
+기존 Windows Hello PIN을 두 번 입력하세요. 입력 내용은 화면에 표시되지 않습니다. PIN은 현재 사용자의 Windows 자격 증명 관리자에 저장되며, 지원되는 PIN 창에서 자동 입력과 확인이 활성화됩니다. Windows Hello PIN 자체는 변경하지 않습니다. 관리자 권한이나 서비스 재시작은 필요 없으며, 다음 인증 창부터 적용됩니다.
+
+```powershell
+breeze-wh pin status  # PIN 저장 여부 확인 (PIN 값은 표시하지 않음)
+breeze-wh pin clear   # 저장된 PIN 삭제 및 자동 입력 비활성화
+```
+
+PIN을 저장하기 전에는 자동 입력이 비활성화되어 있습니다. PIN은 현재 컴퓨터의 현재 사용자에게만 저장되며, `config.toml`이나 로그에는 기록되지 않습니다. Windows Hello PIN을 변경했다면 `pin set`을 다시 실행하세요. 서비스 제거 시 저장된 자격 증명은 남으므로, 필요하면 제거 전에 `pin clear`를 실행하세요.
+
+활성화하면 지원되는 인증 창에서 직접 PIN을 입력하지 않아도 인증할 수 있습니다. 각 창에서 PIN 입력과 확인은 한 번만 시도하며, 실패하면 수동으로 처리할 수 있도록 둡니다. 저장된 PIN을 수정한 후 다시 시도하려면 인증 창을 닫고 다시 여세요.
+
+시스템 `CredentialUIBroker.exe`의 `PasswordField_4` 컨트롤과 UI Automation Value 패턴을 지원합니다. 프로그램 입력을 허용하지 않는 컨트롤은 수동 입력이 필요합니다. 인증 방식 전환, Windows 로그인 화면 잠금 해제, UAC / 보안 데스크톱 창은 지원하지 않습니다.
 
 ## 업그레이드
 
@@ -65,6 +86,7 @@ GitHub Releases에서 최신 `breeze-wh.exe`를 받아 현재 바이너리를 �
 - `breeze-wh stop` — 서비스 중지
 - `breeze-wh status` — 현재 서비스 상태 출력
 - `breeze-wh upgrade` — 최신 릴리스로 업그레이드 (위 섹션 참고)
+- `breeze-wh pin set|clear|status` — 현재 사용자의 PIN 자동 입력 관리
 - `breeze-wh --version` — 설치된 버전 확인
 
 `install` / `uninstall` / `start` / `stop` / `upgrade`는 관리자 권한이 필요하지만, UAC로 자동 상승되므로 관리자 셸을 따로 띄울 필요는 없습니다.
@@ -76,9 +98,9 @@ Breeze는 하나의 바이너리가 두 가지 모드로 동작합니다:
 - **Service 모드** — Session 0에서 Windows 서비스로 실행됩니다. 사용자 로그온/로그오프를 감지하고, 유저 세션에 helper 프로세스를 띄웁니다. helper가 죽으면 자동으로 다시 띄웁니다.
 
 - **Helper 모드** — 유저 세션에서 관리자 권한으로 실행됩니다. UI Automation 이벤트를 통해 `Credential Dialog Xaml Host` 창을 감지하고, UI 트리를 한 번에 스캔합니다:
-  - `PasswordField`이 있으면 → PIN 모드 → **무시**
+  - `PasswordField_4`이 있으면 → PIN 모드 → 저장된 PIN이 있으면 **한 번 입력 및 확인**, 없으면 무시
   - `PasswordField` 없이 `OkButton`이 있으면 → 얼굴 인식 → **클릭**
-  - `OkButton`이 아직 안 떴으면 → `StructureChanged` 이벤트로 기다림
+  - 컨트롤이 준비되지 않았으면 → 구조 및 활성화/표시 상태 변경 이벤트로 기다림
 
 감지에 사용하는 `AutomationId`와 `ClassName`은 언어에 의존하지 않으므로, Windows 표시 언어가 뭐든 상관없이 동작합니다.
 
@@ -98,7 +120,7 @@ log_max_files = 7
 ## 요구 사항
 
 - Windows 10 / 11
-- Windows Hello 얼굴 인식이 설정되어 있어야 함
+- Windows Hello 얼굴 인식 또는 PIN이 설정되어 있어야 함
 - [Rust](https://rustup.rs/) 툴체인 (cargo로 설치 시)
 
 ## 라이선스

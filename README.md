@@ -27,7 +27,7 @@ Credential dialog appears with "OK" button
         ↓
 Breeze detects it via UI Automation API
         ↓
-Confirms automatically (only for face recognition, not PIN)
+Confirms automatically (PIN entry is opt-in; see below)
         ↓
 You're in. Zero clicks.
 ```
@@ -40,6 +40,27 @@ breeze-wh install
 ```
 
 That's it. Breeze runs silently in the background.
+
+## Automatic PIN entry
+
+To enable PIN entry, run this as the Windows user who will use Windows Hello:
+
+```powershell
+breeze-wh pin set
+```
+
+Enter your existing Windows Hello PIN twice at the hidden prompts. This saves the PIN in your Windows Credential Manager and enables automatic entry for supported PIN dialogs. It does not change your Windows Hello PIN. No administrator rights or service restart are needed; changes apply to the next dialog.
+
+```powershell
+breeze-wh pin status  # Show whether a PIN is saved (never prints it)
+breeze-wh pin clear   # Delete the saved PIN and disable automatic entry
+```
+
+PIN entry is disabled until you save a PIN. The PIN is stored for the current user on this computer, never in `config.toml` or logs. Run `pin set` again after changing your Windows Hello PIN. Use `pin clear` before uninstalling if you want to remove the saved credential; uninstalling the service leaves it intact.
+
+When enabled, supported prompts can authenticate without you typing your PIN. Breeze fills the PIN and invokes the enabled confirmation button at most once per dialog. A failed attempt is left for manual handling; close and reopen the dialog to try again after correcting the saved PIN.
+
+This supports the `PasswordField_4` control hosted by the system `CredentialUIBroker.exe`, using UI Automation's Value pattern. Controls that reject programmatic input are left for manual entry. It does not switch authentication methods, unlock the Windows sign-in screen, or handle UAC / Secure Desktop prompts.
 
 ## Upgrade
 
@@ -65,6 +86,7 @@ Service state is preserved across the upgrade:
 - `breeze-wh stop` — Stop the service
 - `breeze-wh status` — Show current service state
 - `breeze-wh upgrade` — Upgrade to the latest release (see above)
+- `breeze-wh pin set|clear|status` — Manage automatic PIN entry for the current user
 - `breeze-wh --version` — Print the installed version
 
 `install` / `uninstall` / `start` / `stop` / `upgrade` all need admin rights — they auto-request elevation via UAC, you don't need to launch an elevated shell yourself.
@@ -76,9 +98,9 @@ Breeze is a single binary that runs in two modes:
 - **Service mode** — Runs in Session 0 as a Windows Service. Detects user logon/logoff and spawns the helper in the user's desktop session. Automatically restarts it on crash with exponential backoff.
 
 - **Helper mode** — Runs in the user session with elevated privileges. Subscribes to UI Automation focus events to detect `Credential Dialog Xaml Host` windows. On detection, scans the UI tree in a single pass:
-  - `PasswordField` present → PIN mode → **skip**
+  - `PasswordField_4` present → PIN mode → **fill and confirm once** if a PIN is saved; otherwise skip
   - `OkButton` present without `PasswordField` → face recognition → **click**
-  - `OkButton` not yet visible → watch `StructureChanged` events until it appears
+  - Controls not ready → watch structure and enabled/visibility property changes until they are ready
 
 All detection uses language-independent `AutomationId` and `ClassName` properties, so it works regardless of your Windows display language.
 
@@ -98,7 +120,7 @@ Logs: `C:\ProgramData\Breeze-WH\logs\`
 ## Requirements
 
 - Windows 10 / 11
-- Windows Hello face recognition configured
+- Windows Hello face recognition or PIN configured
 - [Rust](https://rustup.rs/) toolchain (to install via cargo)
 
 ## License
